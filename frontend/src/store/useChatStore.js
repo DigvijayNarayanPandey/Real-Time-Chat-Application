@@ -3,6 +3,24 @@ import { axiosInstance } from "../lib/axios";
 import toast from "react-hot-toast";
 import { useAuthStore } from "./useAuthStore";
 
+function readInitialSoundEnabled() {
+  try {
+    return JSON.parse(localStorage.getItem("isSoundEnabled")) === true;
+  } catch {
+    return false;
+  }
+}
+
+let notificationAudio = null;
+function playNotificationSound() {
+  if (typeof Audio === "undefined") return;
+  if (!notificationAudio) {
+    notificationAudio = new Audio("/sounds/notification.mp3");
+  }
+  notificationAudio.currentTime = 0;
+  notificationAudio.play().catch(() => {});
+}
+
 export const useChatStore = create((set, get) => ({
   allContacts: [],
   chats: [],
@@ -11,24 +29,35 @@ export const useChatStore = create((set, get) => ({
   selectedUser: null,
   isUsersLoading: false,
   isMessagesLoading: false,
-  isSoundEnabled: JSON.parse(localStorage.getItem("isSoundEnabled")) === true,
+  lastReadByPartnerAt: {},
+  isSoundEnabled: readInitialSoundEnabled(),
 
   toggleSound: () => {
-    localStorage.setItem("isSoundEnabled", !get().isSoundEnabled);
-    set({ isSoundEnabled: !get().isSoundEnabled });
+    const nextValue = !get().isSoundEnabled;
+    try {
+      localStorage.setItem("isSoundEnabled", JSON.stringify(nextValue));
+    } catch {
+      // Ignore storage errors
+    }
+    set({ isSoundEnabled: nextValue });
   },
 
   setActiveTab: (tab) => set({ activeTab: tab }),
+
   setSelectedUser: async (selectedUser) => {
-    set({ selectedUser });
+    const prevSelectedId = get().selectedUser?._id;
+    const nextSelectedId = selectedUser?._id;
+
+    set({
+      selectedUser,
+      ...(prevSelectedId !== nextSelectedId ? { messages: [] } : {}),
+    });
+
     if (selectedUser) {
-      // Mark messages as read when user opens a chat
       try {
         await axiosInstance.patch(`/messages/read/${selectedUser._id}`);
-        // Emit socket event to notify the other user that messages have been read
-        const socket = useAuthStore.getState().socket;
-        if (socket) {
-          const { authUser } = useAuthStore.getState();
+        const { socket, authUser } = useAuthStore.getState();
+        if (socket && authUser?._id) {
           socket.emit("messagesRead", {
             readerId: authUser._id,
             chatUserId: selectedUser._id,
@@ -40,34 +69,65 @@ export const useChatStore = create((set, get) => ({
     }
   },
 
+  markLocalMessagesAsRead: (readerId) => {
+    if (!readerId) return;
+    const { authUser } = useAuthStore.getState();
+    if (!authUser?._id) return;
+
+    const readTimestamp = new Date().toISOString();
+    const readerIdStr = String(readerId);
+    const currentUserIdStr = String(authUser._id);
+
+    set((state) => ({
+      lastReadByPartnerAt: {
+        ...state.lastReadByPartnerAt,
+        [readerIdStr]: readTimestamp,
+      },
+      messages: state.messages.map((msg) => {
+        if (
+          String(msg.senderId) === currentUserIdStr &&
+          String(msg.receiverId) === readerIdStr &&
+          !msg.readAt
+        ) {
+          return { ...msg, readAt: readTimestamp };
+        }
+        return msg;
+      }),
+    }));
+  },
+
   getAllContacts: async () => {
     set({ isUsersLoading: true });
     try {
       const res = await axiosInstance.get("/messages/contacts");
       set({ allContacts: res.data });
     } catch (error) {
-      toast.error(error.response.data.message);
+      toast.error(error.response?.data?.message || "Failed to load contacts");
     } finally {
       set({ isUsersLoading: false });
     }
   },
+
   getMyChatPartners: async () => {
     set({ isUsersLoading: true });
     try {
       const res = await axiosInstance.get("/messages/chats");
       set({ chats: res.data });
     } catch (error) {
-      toast.error(error.response.data.message);
+      toast.error(error.response?.data?.message || "Failed to load chats");
     } finally {
       set({ isUsersLoading: false });
     }
   },
 
   getMessagesByUserId: async (userId) => {
+    if (!userId) return;
     set({ isMessagesLoading: true });
     try {
       const res = await axiosInstance.get(`/messages/${userId}`);
-      set({ messages: res.data });
+      if (String(get().selectedUser?._id) === String(userId)) {
+        set({ messages: res.data });
+      }
     } catch (error) {
       toast.error(error.response?.data?.message || "Something went wrong");
     } finally {
@@ -78,9 +138,9 @@ export const useChatStore = create((set, get) => ({
   sendMessage: async (messageData) => {
     const { selectedUser, messages } = get();
     const { authUser } = useAuthStore.getState();
+    if (!selectedUser?._id || !authUser?._id) return;
 
-    const tempId = `temp-${Date.now()}`;
-
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const optimisticMessage = {
       _id: tempId,
       senderId: authUser._id,
@@ -88,18 +148,29 @@ export const useChatStore = create((set, get) => ({
       text: messageData.text,
       image: messageData.image,
       createdAt: new Date().toISOString(),
+      readAt: null,
     };
-    // immidetaly update the ui by adding the message
+
     set({ messages: [...messages, optimisticMessage] });
 
     try {
       const res = await axiosInstance.post(`/messages/send/${selectedUser._id}`, messageData);
-      // Replace the optimistic temp message with the real message from the server
-      // Uses get().messages (live state) instead of the stale `messages` closure
-      set({ messages: get().messages.map((msg) => (msg._id === tempId ? res.data : msg)) });
+      const partnerIdStr = String(selectedUser._id);
+      const partnerReadAt = get().lastReadByPartnerAt[partnerIdStr];
+      const savedMessage =
+        !res.data.readAt &&
+        partnerReadAt &&
+        new Date(partnerReadAt).getTime() >= new Date(res.data.createdAt).getTime()
+          ? { ...res.data, readAt: partnerReadAt }
+          : res.data;
+
+      set((state) => ({
+        messages: state.messages.map((msg) => (msg._id === tempId ? savedMessage : msg)),
+      }));
     } catch (error) {
-      // Remove only the optimistic message on failure, preserving any other new messages
-      set({ messages: get().messages.filter((msg) => msg._id !== tempId) });
+      set((state) => ({
+        messages: state.messages.filter((msg) => msg._id !== tempId),
+      }));
       toast.error(error.response?.data?.message || "Something went wrong");
     }
   },
@@ -109,39 +180,49 @@ export const useChatStore = create((set, get) => ({
     if (!selectedUser) return;
 
     const socket = useAuthStore.getState().socket;
+    if (!socket) return;
 
-    socket.on("newMessage", async (newMessage) => {
-      const isMessageSentFromSelectedUser = newMessage.senderId === selectedUser._id;
-      if (!isMessageSentFromSelectedUser) return;
+    // Prevent duplicate handlers if subscribe is called after socket reconnects
+    get().unsubscribeFromMessages();
 
-      const currentMessages = get().messages;
-      set({ messages: [...currentMessages, newMessage] });
+    const handleNewMessage = async (newMessage) => {
+      const state = get();
+      if (!state.selectedUser) return;
 
-      // Since the chat is open, mark the message as read on backend and emit read receipt in real-time
+      const isFromSelectedUser = String(newMessage.senderId) === String(state.selectedUser._id);
+      if (!isFromSelectedUser) return;
+
+      set({ messages: [...state.messages, newMessage] });
+
       try {
-        await axiosInstance.patch(`/messages/read/${selectedUser._id}`);
-        if (socket) {
-          const { authUser } = useAuthStore.getState();
-          socket.emit("messagesRead", {
+        await axiosInstance.patch(`/messages/read/${state.selectedUser._id}`);
+        const { socket: currentSocket, authUser } = useAuthStore.getState();
+        if (currentSocket && authUser?._id) {
+          currentSocket.emit("messagesRead", {
             readerId: authUser._id,
-            chatUserId: selectedUser._id,
+            chatUserId: state.selectedUser._id,
           });
         }
       } catch (error) {
         console.error("Failed to mark incoming message as read:", error);
       }
 
-      // Always read the CURRENT value of isSoundEnabled (avoid stale closure)
       if (get().isSoundEnabled) {
-        const notificationSound = new Audio("/sounds/notification.mp3");
-        notificationSound.currentTime = 0;
-        notificationSound.play().catch((e) => console.log("Audio play failed:", e));
+        playNotificationSound();
       }
-    });
+    };
+
+    socket.newMessageHandler = handleNewMessage;
+    socket.on("newMessage", handleNewMessage);
   },
 
   unsubscribeFromMessages: () => {
     const socket = useAuthStore.getState().socket;
-    socket.off("newMessage");
+    if (!socket) return;
+
+    if (socket.newMessageHandler) {
+      socket.off("newMessage", socket.newMessageHandler);
+      socket.newMessageHandler = null;
+    }
   },
 }));

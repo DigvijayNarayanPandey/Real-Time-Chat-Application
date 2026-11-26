@@ -8,17 +8,20 @@ import {
 } from "../controllers/message.controller.js";
 import { protectRoute } from "../middleware/auth.middleware.js";
 import { arcjetProtection } from "../middleware/arcjet.middleware.js";
+import {
+  validateObjectIdParam,
+  validateSendMessage,
+} from "../middleware/validate.middleware.js";
 
 const router = express.Router();
 
-// the middlewares execute in order - so requests get rate-limited first, then authenticated.
-// this is actually more efficient since unauthenticated requests get blocked by rate limiting before hitting the auth middleware.
+// Rate-limit / bot-protect first, then authenticate
 router.use(arcjetProtection, protectRoute);
 
 router.get("/contacts", getAllContacts);
 router.get("/chats", getChatPartners);
-router.get("/:id", getMessagesByUserId);
-router.post("/send/:id", sendMessage);
-router.patch("/read/:userId", markMessagesAsRead);
+router.get("/:id", validateObjectIdParam("id"), getMessagesByUserId);
+router.post("/send/:id", validateObjectIdParam("id"), validateSendMessage, sendMessage);
+router.patch("/read/:userId", validateObjectIdParam("userId"), markMessagesAsRead);
 
 export default router;

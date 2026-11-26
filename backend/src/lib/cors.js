@@ -5,8 +5,8 @@ const defaultDevOrigins = [
   "http://127.0.0.1:5173",
 ];
 
-// Only include default development origins in development mode
-const effectiveDevOrigins = ENV.NODE_ENV === "development" ? defaultDevOrigins : [];
+// Include default local dev origins whenever not explicitly running in production
+const effectiveDevOrigins = ENV.NODE_ENV !== "production" ? defaultDevOrigins : [];
 
 export const allowedOrigins = [
   ...new Set(

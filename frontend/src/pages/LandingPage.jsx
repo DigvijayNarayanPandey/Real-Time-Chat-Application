@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { Link } from "react-router";
 import { useAuthStore } from "../store/useAuthStore";
 import {
@@ -13,31 +13,37 @@ import {
   Sparkles,
   Flower,
   Cloud,
-  Grid
+  Grid,
 } from "lucide-react";
 
 function LandingPage() {
   const { authUser, isCheckingAuth } = useAuthStore();
+  const animatedRefs = useRef([]);
+
+  const registerAnimatedElement = useCallback((el) => {
+    if (el && !animatedRefs.current.includes(el)) {
+      animatedRefs.current.push(el);
+    }
+  }, []);
 
   useEffect(() => {
-    const observerOptions = {
-      threshold: 0.1,
-    };
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("opacity-100", "translate-y-0");
+            entry.target.classList.remove("opacity-0", "translate-y-8");
+          }
+        });
+      },
+      { threshold: 0.1 }
+    );
 
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-          entry.target.classList.add("opacity-100", "translate-y-0");
-          entry.target.classList.remove("opacity-0", "translate-y-8");
-        }
-      });
-    }, observerOptions);
-
-    const animatedElements = document.querySelectorAll(".animate-on-scroll");
-    animatedElements.forEach((el) => observer.observe(el));
+    const elements = animatedRefs.current;
+    elements.forEach((el) => observer.observe(el));
 
     return () => {
-      animatedElements.forEach((el) => observer.unobserve(el));
+      observer.disconnect();
     };
   }, []);
 
@@ -86,7 +92,10 @@ function LandingPage() {
       <main className="flex-grow pt-20">
         {/* ── HERO SECTION ── */}
         <section className="hero-gradient-terra px-5 py-16 md:py-24 flex flex-col items-center text-center relative overflow-hidden">
-          <div className="max-w-xl mx-auto mt-4 animate-on-scroll transition-all duration-700 opacity-0 translate-y-8">
+          <div
+            ref={registerAnimatedElement}
+            className="max-w-xl mx-auto mt-4 transition-all duration-700 opacity-0 translate-y-8"
+          >
             <h1 className="text-4xl md:text-5xl font-extrabold mb-6 leading-tight tracking-tight text-[#1a1c19]">
               Simple. Secure. <br className="hidden sm:inline" /> Messaging.
             </h1>
@@ -115,7 +124,10 @@ function LandingPage() {
           </div>
 
           {/* ── MOCKUP SCREEN (Terra Theme) ── */}
-          <div className="relative w-full max-w-[340px] mx-auto mt-8 group animate-on-scroll transition-all duration-1000 opacity-0 translate-y-8">
+          <div
+            ref={registerAnimatedElement}
+            className="relative w-full max-w-[340px] mx-auto mt-8 group transition-all duration-1000 opacity-0 translate-y-8"
+          >
             <div className="absolute inset-0 bg-[#d7e8de]/40 blur-3xl -z-10 rounded-full scale-125"></div>
             <div className="bg-[#e2e3db] rounded-[48px] p-3 border-4 border-white/80 shadow-2xl shadow-[#4a7c59]/10 overflow-hidden transform group-hover:scale-[1.02] transition-transform duration-500">
               <div className="bg-[#fdfcf9] rounded-[36px] h-[540px] flex flex-col relative overflow-hidden mockup-inner-shadow">
@@ -142,19 +154,16 @@ function LandingPage() {
                     </p>
                   </div>
 
-                  {/* Receiver */}
                   <div className="bg-[#e8e9e1] rounded-2xl rounded-bl-none p-3 max-w-[85%] self-start border border-[#c2c9bf]/20">
                     <p className="text-sm text-[#1a1c19] leading-relaxed">
                       Welcome to Chatty. Experience the peace of private messaging.
                     </p>
                   </div>
 
-                  {/* Sender */}
                   <div className="bg-[#4a7c59] text-white rounded-2xl rounded-br-none p-3 max-w-[85%] self-end shadow-sm">
                     <p className="text-sm leading-relaxed">Tell me about the encryption.</p>
                   </div>
 
-                  {/* Receiver */}
                   <div className="bg-[#e8e9e1] rounded-2xl rounded-bl-none p-3 max-w-[85%] self-start border border-[#c2c9bf]/20">
                     <p className="text-sm text-[#1a1c19] leading-relaxed">
                       Every word is protected like a seedling in fertile soil, visible only to you.
@@ -177,7 +186,10 @@ function LandingPage() {
 
         {/* ── TRUST BAR ── */}
         <section className="bg-[#f4f4ec] py-8 border-y border-[#c2c9bf]/20 overflow-x-auto whitespace-nowrap no-scrollbar">
-          <div className="flex justify-center items-center gap-12 px-6 min-w-max mx-auto animate-on-scroll transition-all duration-700 opacity-0 translate-y-8">
+          <div
+            ref={registerAnimatedElement}
+            className="flex justify-center items-center gap-12 px-6 min-w-max mx-auto transition-all duration-700 opacity-0 translate-y-8"
+          >
             <div className="flex items-center gap-2 text-[#424941]">
               <ShieldCheck className="w-5 h-5 text-[#4a7c59]" />
               <span className="font-bold text-sm tracking-wide">End-to-End Encrypted</span>
@@ -195,13 +207,18 @@ function LandingPage() {
 
         {/* ── FEATURES SECTION ── */}
         <section className="px-5 py-20 space-y-8 max-w-[600px] mx-auto">
-          <div className="text-center mb-12 animate-on-scroll transition-all duration-700 opacity-0 translate-y-8">
+          <div
+            ref={registerAnimatedElement}
+            className="text-center mb-12 transition-all duration-700 opacity-0 translate-y-8"
+          >
             <h2 className="text-2xl md:text-3xl font-extrabold mb-3 text-[#1a1c19]">Designed and Developed by</h2>
             <p className="text-xl md:text-3xl font-extrabold mb-3 text-[#424941]">Digvijay Narayan Pandey</p>
           </div>
 
-          {/* Feature Card 1 */}
-          <div className="p-8 bg-[#ffffff] rounded-3xl border border-[#c2c9bf]/40 hover:border-[#4a7c59]/30 transition-all duration-300 shadow-terra animate-on-scroll transition-all duration-700 opacity-0 translate-y-8">
+          <div
+            ref={registerAnimatedElement}
+            className="p-8 bg-[#ffffff] rounded-3xl border border-[#c2c9bf]/40 hover:border-[#4a7c59]/30 transition-all duration-700 shadow-terra opacity-0 translate-y-8"
+          >
             <div className="w-12 h-12 rounded-2xl bg-[#d7e8de] flex items-center justify-center mb-4">
               <Flower className="w-6 h-6 text-[#4a7c59]" />
             </div>
@@ -211,8 +228,10 @@ function LandingPage() {
             </p>
           </div>
 
-          {/* Feature Card 2 */}
-          <div className="p-8 bg-[#ffffff] rounded-3xl border border-[#c2c9bf]/40 hover:border-[#4a7c59]/30 transition-all duration-300 shadow-terra animate-on-scroll transition-all duration-700 opacity-0 translate-y-8">
+          <div
+            ref={registerAnimatedElement}
+            className="p-8 bg-[#ffffff] rounded-3xl border border-[#c2c9bf]/40 hover:border-[#4a7c59]/30 transition-all duration-700 shadow-terra opacity-0 translate-y-8"
+          >
             <div className="w-12 h-12 rounded-2xl bg-[#d7e8de] flex items-center justify-center mb-4">
               <Cloud className="w-6 h-6 text-[#4a7c59]" />
             </div>
@@ -222,8 +241,10 @@ function LandingPage() {
             </p>
           </div>
 
-          {/* Feature Card 3 */}
-          <div className="p-8 bg-[#ffffff] rounded-3xl border border-[#c2c9bf]/40 hover:border-[#4a7c59]/30 transition-all duration-300 shadow-terra animate-on-scroll transition-all duration-700 opacity-0 translate-y-8">
+          <div
+            ref={registerAnimatedElement}
+            className="p-8 bg-[#ffffff] rounded-3xl border border-[#c2c9bf]/40 hover:border-[#4a7c59]/30 transition-all duration-700 shadow-terra opacity-0 translate-y-8"
+          >
             <div className="w-12 h-12 rounded-2xl bg-[#d7e8de] flex items-center justify-center mb-4">
               <Grid className="w-6 h-6 text-[#4a7c59]" />
             </div>
@@ -271,10 +292,10 @@ function LandingPage() {
           </div>
 
           <nav className="flex gap-6">
-            <a className="text-sm text-[#424941] hover:text-[#4a7c59] transition-colors cursor-pointer" href="#">Privacy</a>
-            <a className="text-sm text-[#424941] hover:text-[#4a7c59] transition-colors cursor-pointer" href="#">Terms</a>
-            <a className="text-sm text-[#424941] hover:text-[#4a7c59] transition-colors cursor-pointer" href="#">Security</a>
-            <a className="text-sm text-[#424941] hover:text-[#4a7c59] transition-colors cursor-pointer" href="#">Support</a>
+            <a className="text-sm text-[#424941] hover:text-[#4a7c59] transition-colors cursor-pointer" href="#privacy">Privacy</a>
+            <a className="text-sm text-[#424941] hover:text-[#4a7c59] transition-colors cursor-pointer" href="#terms">Terms</a>
+            <a className="text-sm text-[#424941] hover:text-[#4a7c59] transition-colors cursor-pointer" href="#security">Security</a>
+            <a className="text-sm text-[#424941] hover:text-[#4a7c59] transition-colors cursor-pointer" href="#support">Support</a>
           </nav>
 
           <p className="text-sm text-[#424941]/80 text-center">

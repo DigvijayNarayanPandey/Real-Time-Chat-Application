@@ -1,117 +1,113 @@
 import { useState } from "react";
 import { useAuthStore } from "../store/useAuthStore";
-import { MessageCircleIcon, LockIcon, MailIcon, UserIcon, LoaderIcon, EyeIcon, EyeOffIcon } from "lucide-react";
-import { Link } from "react-router";
+import { MailIcon, UserIcon, LoaderIcon } from "lucide-react";
+import AuthLayout from "../components/AuthLayout";
+import PasswordInput from "../components/PasswordInput";
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function SignUpPage() {
   const [formData, setFormData] = useState({ fullName: "", email: "", password: "" });
+  const [errors, setErrors] = useState({});
   const { signup, isSigningUp } = useAuthStore();
-  const [showPassword, setShowPassword] = useState(false);
+
+  const validate = () => {
+    const nextErrors = {};
+    if (!formData.fullName.trim()) {
+      nextErrors.fullName = "Full name is required";
+    }
+    if (!formData.email.trim()) {
+      nextErrors.email = "Email is required";
+    } else if (!EMAIL_REGEX.test(formData.email.trim())) {
+      nextErrors.email = "Please enter a valid email address";
+    }
+    if (!formData.password) {
+      nextErrors.password = "Password is required";
+    } else if (formData.password.length < 8) {
+      nextErrors.password = "Password must be at least 8 characters";
+    }
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    signup(formData);
+    if (!validate()) return;
+    signup({
+      fullName: formData.fullName.trim(),
+      email: formData.email.trim(),
+      password: formData.password,
+    });
   };
 
   return (
-    <div className="w-full min-h-screen flex flex-col md:flex-row bg-base-100 text-base-content">
-      {/* ── LEFT — FORM ── */}
-      <div className="flex-1 flex items-center justify-center p-8 md:p-12">
-        <div className="w-full max-w-sm">
-          {/* Header */}
-          <div className="text-center mb-8">
-            <div className="w-14 h-14 rounded-full bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center mx-auto mb-4">
-              <MessageCircleIcon className="w-7 h-7 text-cyan-400" />
-            </div>
-            <h1 className="text-2xl font-bold text-base-content mb-1">Create Account</h1>
-            <p className="text-base-content/60 text-sm">Sign up for a new account</p>
+    <AuthLayout
+      title="Create Account"
+      subtitle="Sign up for a new account"
+      footerLinkTo="/login"
+      footerLinkText="Already have an account? Login"
+      illustrationSrc="/signup.png"
+      illustrationAlt="People using app"
+      illustrationHeading="Start Your Journey Today"
+    >
+      <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+        <div>
+          <label htmlFor="signup-fullname" className="auth-input-label">
+            Full Name
+          </label>
+          <div className="relative">
+            <UserIcon className="auth-input-icon" />
+            <input
+              id="signup-fullname"
+              type="text"
+              value={formData.fullName}
+              onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+              className="auth-input"
+              placeholder="John Doe"
+              autoComplete="name"
+              aria-invalid={Boolean(errors.fullName)}
+            />
           </div>
-
-          <form onSubmit={handleSubmit} className="space-y-5">
-            {/* Full Name */}
-            <div>
-              <label className="auth-input-label">Full Name</label>
-              <div className="relative">
-                <UserIcon className="auth-input-icon" />
-                <input
-                  type="text"
-                  value={formData.fullName}
-                  onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                  className="auth-input"
-                  placeholder="John Doe"
-                />
-              </div>
-            </div>
-
-            {/* Email */}
-            <div>
-              <label className="auth-input-label">Email</label>
-              <div className="relative">
-                <MailIcon className="auth-input-icon" />
-                <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className="auth-input"
-                  placeholder="johndoe@gmail.com"
-                />
-              </div>
-            </div>
-
-            {/* Password */}
-            <div>
-              <label className="auth-input-label">Password</label>
-              <div className="relative">
-                <LockIcon className="auth-input-icon" />
-                <input
-                  type={showPassword ? "text" : "password"}
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  className="auth-input"
-                  placeholder="Enter your password"
-                />
-                <button
-                  type="button"
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-base-content/60 hover:text-base-content transition-colors"
-                  onClick={() => setShowPassword(!showPassword)}
-                >
-                  {showPassword ? <EyeOffIcon className="w-5 h-5" /> : <EyeIcon className="w-5 h-5" />}
-                </button>
-              </div>
-            </div>
-
-            <button className="auth-btn" type="submit" disabled={isSigningUp}>
-              {isSigningUp
-                ? <LoaderIcon className="w-5 h-5 animate-spin mx-auto" />
-                : "Create Account"}
-            </button>
-          </form>
-
-          <div className="mt-6 text-center">
-            <Link to="/login" className="auth-link">
-              Already have an account? Login
-            </Link>
-          </div>
+          {errors.fullName && <p className="text-error text-xs mt-1">{errors.fullName}</p>}
         </div>
-      </div>
 
-      {/* ── RIGHT — ILLUSTRATION (hidden on mobile) ── */}
-      <div className="hidden md:flex md:w-1/2 items-center justify-center p-8 bg-gradient-to-bl from-base-200/30 to-transparent border-l border-base-content/10">
-        <div className="text-center">
-          <img
-            src="/signup.png"
-            alt="People using app"
-            className="w-full max-w-xs h-auto object-contain mx-auto"
-          />
-          <h2 className="text-xl font-semibold text-cyan-400 mt-6">Start Your Journey Today</h2>
-          <div className="mt-4 flex justify-center gap-3">
-            <span className="auth-badge">Free</span>
-            <span className="auth-badge">Easy Setup</span>
-            <span className="auth-badge">Private</span>
+        <div>
+          <label htmlFor="signup-email" className="auth-input-label">
+            Email
+          </label>
+          <div className="relative">
+            <MailIcon className="auth-input-icon" />
+            <input
+              id="signup-email"
+              type="email"
+              value={formData.email}
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              className="auth-input"
+              placeholder="johndoe@gmail.com"
+              autoComplete="email"
+              aria-invalid={Boolean(errors.email)}
+            />
           </div>
+          {errors.email && <p className="text-error text-xs mt-1">{errors.email}</p>}
         </div>
-      </div>
-    </div>
+
+        <PasswordInput
+          id="signup-password"
+          value={formData.password}
+          onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+          autoComplete="new-password"
+          error={errors.password}
+        />
+
+        <button className="auth-btn" type="submit" disabled={isSigningUp}>
+          {isSigningUp ? (
+            <LoaderIcon className="w-5 h-5 animate-spin mx-auto" />
+          ) : (
+            "Create Account"
+          )}
+        </button>
+      </form>
+    </AuthLayout>
   );
 }
 export default SignUpPage;

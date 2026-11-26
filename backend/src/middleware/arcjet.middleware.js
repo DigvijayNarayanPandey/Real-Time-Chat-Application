@@ -1,7 +1,13 @@
 import aj from "../lib/arcjet.js";
 import { isSpoofedBot } from "@arcjet/inspect";
+import { ENV } from "../lib/env.js";
+import { logger } from "../lib/logger.js";
 
 export const arcjetProtection = async (req, res, next) => {
+  if (!ENV.ARCJET_KEY || ENV.NODE_ENV === "test") {
+    return next();
+  }
+
   try {
     const decision = await aj.protect(req);
 
@@ -17,7 +23,6 @@ export const arcjetProtection = async (req, res, next) => {
       }
     }
 
-    // check for spoofed bots
     if (decision.results.some(isSpoofedBot)) {
       return res.status(403).json({
         error: "Spoofed bot detected",
@@ -27,7 +32,7 @@ export const arcjetProtection = async (req, res, next) => {
 
     next();
   } catch (error) {
-    console.log("Arcjet Protection Error:", error);
+    logger.warn("Arcjet protection failed open", { error });
     next();
   }
 };

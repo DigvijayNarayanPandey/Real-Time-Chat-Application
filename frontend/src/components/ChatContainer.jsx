@@ -1,6 +1,7 @@
-import { useEffect, useRef, useMemo } from "react";
+import { useEffect, useRef, useMemo, useCallback } from "react";
 import { useAuthStore } from "../store/useAuthStore";
 import { useChatStore } from "../store/useChatStore";
+import { formatDateHeader, formatMessageTime, getLocalDateKey } from "../lib/dateUtils";
 import ChatHeader from "./ChatHeader";
 import NoChatHistoryPlaceholder from "./NoChatHistoryPlaceholder";
 import MessageInput from "./MessageInput";
@@ -8,133 +9,120 @@ import MessagesLoadingSkeleton from "./MessagesLoadingSkeleton";
 import { Check, CheckCheck } from "lucide-react";
 
 function ChatContainer() {
-  // Get state values from the hook
-  const {
-    selectedUser,
-    messages,
-    isMessagesLoading,
-  } = useChatStore();
+  const selectedUser = useChatStore((state) => state.selectedUser);
+  const messages = useChatStore((state) => state.messages);
+  const isMessagesLoading = useChatStore((state) => state.isMessagesLoading);
 
-  // Get API functions from the store's getState
-  const chatStoreApi = useChatStore.getState();
-  const {
-    getMessagesByUserId,
-    subscribeToMessages,
-    unsubscribeFromMessages,
-  } = chatStoreApi;
+  const getMessagesByUserId = useChatStore((state) => state.getMessagesByUserId);
+  const subscribeToMessages = useChatStore((state) => state.subscribeToMessages);
+  const unsubscribeFromMessages = useChatStore((state) => state.unsubscribeFromMessages);
+  const markLocalMessagesAsRead = useChatStore((state) => state.markLocalMessagesAsRead);
 
-  // Get authUser and socket from auth store
-  const { authUser } = useAuthStore();
-  const authStoreApi = useAuthStore.getState();
-  const { socket } = authStoreApi;
+  const authUser = useAuthStore((state) => state.authUser);
+  const socket = useAuthStore((state) => state.socket);
 
   const messageEndRef = useRef(null);
 
-  // Helper function to format date header
-  const getDateHeader = (date) => {
-    const today = new Date().toDateString();
-    const yesterday = new Date(Date.now() - 86400000).toDateString();
-    const thisWeek = new Date(Date.now() - 7 * 86400000).toDateString();
-
-    if (date === today) return "Today";
-    if (date === yesterday) return "Yesterday";
-    if (date > thisWeek) {
-      // Return day name (Mon, Tue, etc.)
-      return new Date(date).toLocaleDateString('en-GB', { weekday: 'long' });
-    }
-    // Return short date format (e.g., 10/25 or 10/25/23)
-    return new Date(date).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  };
-
-  // Process messages to add date headers
   const processedMessages = useMemo(() => {
-    const processed = [];
-    let previousDate = null;
+    if (!messages || messages.length === 0) return [];
 
-    messages.forEach((msg) => {
-      const messageDate = new Date(msg.createdAt).toDateString();
-      if (previousDate !== messageDate) {
-        processed.push({ type: 'date', date: messageDate });
-        previousDate = messageDate;
+    const processed = [];
+    let previousDateKey = null;
+
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i];
+      const dateKey = getLocalDateKey(msg.createdAt);
+      if (previousDateKey !== dateKey) {
+        processed.push({
+          type: "date",
+          dateKey,
+          label: formatDateHeader(msg.createdAt),
+        });
+        previousDateKey = dateKey;
       }
-      processed.push({ type: 'message', message: msg });
-    });
+      processed.push({ type: "message", message: msg });
+    }
 
     return processed;
   }, [messages]);
 
-  // Fetch messages and subscribe to new messages when selectedUser changes
   useEffect(() => {
+    if (!selectedUser?._id) return;
     getMessagesByUserId(selectedUser._id);
+  }, [selectedUser?._id, getMessagesByUserId]);
+
+  useEffect(() => {
+    if (!selectedUser?._id || !socket) return;
     subscribeToMessages();
 
-    // Cleanup
     return () => {
       unsubscribeFromMessages();
     };
-  }, [selectedUser, getMessagesByUserId, subscribeToMessages, unsubscribeFromMessages]);
+  }, [selectedUser?._id, socket, subscribeToMessages, unsubscribeFromMessages]);
 
-  // Scroll to bottom when messages change
   useEffect(() => {
     if (messageEndRef.current) {
       messageEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages]);
 
-  // Listen for read receipts to update messages when the other user reads our messages
-  useEffect(() => {
-    const handleMessagesRead = ({ readerId }) => {
-      // If we are the reader or the readerId doesn't match the selected user, ignore
-      if (authUser._id === readerId || readerId !== selectedUser._id) {
+  const handleMessagesRead = useCallback(
+    ({ readerId }) => {
+      if (
+        !authUser?._id ||
+        !selectedUser?._id ||
+        String(authUser._id) === String(readerId) ||
+        String(readerId) !== String(selectedUser._id)
+      ) {
         return;
       }
-      // Refetch messages to get updated readAt statuses
-      getMessagesByUserId(selectedUser._id);
-    };
+      markLocalMessagesAsRead(readerId);
+    },
+    [selectedUser?._id, authUser?._id, markLocalMessagesAsRead]
+  );
 
-    if (socket) {
-      socket.on("messagesRead", handleMessagesRead);
-      return () => {
-        socket.off("messagesRead", handleMessagesRead);
-      };
-    }
-  }, [selectedUser, authUser._id, socket, getMessagesByUserId]);
+  useEffect(() => {
+    if (!socket) return;
+    socket.on("messagesRead", handleMessagesRead);
+    return () => {
+      socket.off("messagesRead", handleMessagesRead);
+    };
+  }, [socket, handleMessagesRead]);
 
   return (
-    <>
+    <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
       <ChatHeader />
-      <div className="flex-1 px-3 md:px-6 overflow-y-auto py-4 md:py-8">
+
+      <div className="flex-1 min-h-0 px-3 md:px-6 overflow-y-auto py-4 md:py-8">
         {messages.length > 0 && !isMessagesLoading ? (
           <div className="max-w-3xl mx-auto space-y-4 md:space-y-6">
-            {processedMessages.map((item, index) => {
-              if (item.type === 'date') {
+            {processedMessages.map((item) => {
+              if (item.type === "date") {
                 return (
-                  <div key={`date-${index}`} className="text-center text-xs text-muted-content mb-2 mt-4">
-                    {getDateHeader(item.date)}
+                  <div key={`date-${item.dateKey}`} className="flex justify-center my-3">
+                    <span className="px-3 py-1 rounded-full text-xs font-medium bg-base-200/90 text-base-content/70 shadow-sm border border-base-content/10">
+                      {item.label}
+                    </span>
                   </div>
                 );
               }
 
               const msg = item.message;
-              const isSentByCurrentUser = msg.senderId === authUser._id;
+              const isSentByCurrentUser = String(msg.senderId) === String(authUser?._id);
+
               let receipt = null;
               if (isSentByCurrentUser) {
-                // If the message has been read by the receiver
-                if (msg.readAt) {
-                  // Two blue check marks (read)
-                  receipt = (
-                    <span>
-                      <CheckCheck className="w-3 h-3 text-[#008ec3]" />
-                    </span>
-                  );
-                } else {
-                  // Single gray check mark (sent but not read)
-                  receipt = (
-                    <span>
-                      <Check className="w-3 h-3 text-gray-900" />
-                    </span>
-                  );
-                }
+                receipt = msg.readAt ? (
+                  <CheckCheck
+                    aria-label="Read"
+                    className="w-3.5 h-3.5 shrink-0 text-sky-300 drop-shadow-[0_1px_1px_rgba(0,0,0,0.45)]"
+                  />
+                ) : (
+                  <Check
+                    aria-label="Sent"
+                    className="w-3.5 h-3.5 shrink-0 text-primary-content/75"
+                  />
+                );
               }
 
               return (
@@ -143,29 +131,24 @@ function ChatContainer() {
                   className={`chat ${isSentByCurrentUser ? "chat-end" : "chat-start"}`}
                 >
                   <div
-                    className={`chat-bubble ${isSentByCurrentUser
-                        ? "chat-bubble-primary"
-                        : "chat-bubble-neutral"
-                      }`}
+                    className={`chat-bubble ${
+                      isSentByCurrentUser ? "chat-bubble-primary" : "chat-bubble-neutral"
+                    }`}
                   >
                     {msg.image && (
                       <img src={msg.image} alt="Shared" className="rounded-lg h-48 object-cover" />
                     )}
-                    {msg.text && <p className="mt-2">{msg.text}</p>}
-                    <div className="flex justify-between items-start">
-                      <p className="text-xs mt-1 opacity-75 flex items-center gap-1">
-                        {new Date(msg.createdAt).toLocaleTimeString(undefined, {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </p>
+                    {msg.text && <p className={msg.image ? "mt-2" : ""}>{msg.text}</p>}
+                    <div className="flex items-center justify-end gap-1.5 mt-1">
+                      <time className="text-[11px] opacity-75 leading-none">
+                        {formatMessageTime(msg.createdAt)}
+                      </time>
                       {receipt}
                     </div>
                   </div>
                 </div>
               );
             })}
-            {/* 👇 scroll target */}
             <div ref={messageEndRef} />
           </div>
         ) : isMessagesLoading ? (
@@ -176,7 +159,7 @@ function ChatContainer() {
       </div>
 
       <MessageInput />
-    </>
+    </div>
   );
 }
 

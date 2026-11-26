@@ -1,53 +1,50 @@
 import { useState, useRef } from "react";
 import { Settings } from "lucide-react";
+import toast from "react-hot-toast";
 import { useAuthStore } from "../store/useAuthStore";
 import { useChatStore } from "../store/useChatStore";
+import { useTheme } from "../hooks/useTheme";
+import { readImageFileAsDataUrl } from "../lib/imageUpload";
 import SettingsModal from "./SettingsModal";
-
-const mouseClickSound = new Audio("/sounds/mouse-click.mp3");
 
 function ProfileHeader() {
   const { authUser, logout, updateProfile, onlineUsers } = useAuthStore();
   const { isSoundEnabled, toggleSound } = useChatStore();
+  const { theme, setTheme } = useTheme();
   const [selectedImg, setSelectedImg] = useState(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [theme, setTheme] = useState(localStorage.getItem("theme") || "dark");
 
   const fileInputRef = useRef(null);
-
-  // The current user is online if their ID is in the onlineUsers array
   const isOnline = onlineUsers.includes(authUser?._id);
 
-  const handleThemeChange = (newTheme) => {
-    setTheme(newTheme);
-    document.documentElement.setAttribute("data-theme", newTheme);
-    localStorage.setItem("theme", newTheme);
-  };
-
-  const handleImageUpload = (e) => {
-    const file = e.target.files[0];
+  const handleImageUpload = async (e) => {
+    const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onloadend = async () => {
-      const base64Image = reader.result;
+
+    try {
+      const base64Image = await readImageFileAsDataUrl(file);
       setSelectedImg(base64Image);
       await updateProfile({ profilePic: base64Image });
       setSelectedImg(null);
-    };
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   };
 
   return (
     <>
-      <div className="p-4 border-b border-base-content/10 bg-base-300">
+      <div className="shrink-0 p-4 border-b border-base-content/10 bg-base-300">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            {/* AVATAR */}
-            <div className={`avatar ${isOnline ? "online" : "offline"}`}>
+          <div className="flex items-center gap-3 min-w-0">
+            <div className={`avatar shrink-0 ${isOnline ? "online" : "offline"}`}>
               <button
+                type="button"
                 className="w-12 h-12 rounded-full overflow-hidden relative group"
                 onClick={() => fileInputRef.current?.click()}
                 title="Change profile photo"
+                aria-label="Change profile photo"
               >
                 <img
                   src={selectedImg || authUser?.profilePic || "/avatar.png"}
@@ -60,14 +57,13 @@ function ProfileHeader() {
               </button>
               <input
                 type="file"
-                accept="image/*"
+                accept="image/png,image/jpeg,image/webp,image/gif"
                 ref={fileInputRef}
                 onChange={handleImageUpload}
                 className="hidden"
               />
             </div>
 
-            {/* NAME & STATUS */}
             <div className="min-w-0">
               <h3 className="font-semibold text-base-content truncate max-w-[160px]">
                 {authUser?.fullName}
@@ -78,26 +74,24 @@ function ProfileHeader() {
             </div>
           </div>
 
-          {/* SETTINGS BUTTON */}
           <button
+            type="button"
             className="btn btn-ghost btn-sm btn-circle text-base-content/60 hover:text-base-content"
-            onClick={() => {
-              setIsSettingsOpen(true);
-            }}
+            onClick={() => setIsSettingsOpen(true)}
             title="Settings"
+            aria-label="Open settings"
           >
             <Settings className="size-5" />
           </button>
         </div>
       </div>
 
-      {/* Settings Modal */}
       {isSettingsOpen && (
         <SettingsModal
           isOpen={isSettingsOpen}
           onClose={() => setIsSettingsOpen(false)}
           theme={theme}
-          setTheme={handleThemeChange}
+          setTheme={setTheme}
           authUser={authUser}
           isOnline={isOnline}
           isSoundEnabled={isSoundEnabled}

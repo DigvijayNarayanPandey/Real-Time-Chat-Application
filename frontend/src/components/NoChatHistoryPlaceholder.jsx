@@ -1,6 +1,15 @@
 import { MessageCircleIcon } from "lucide-react";
+import { useChatStore } from "../store/useChatStore";
+
+const QUICK_REPLIES = [
+  { label: "👋 Say Hello", text: "Hello!" },
+  { label: "🤝 How are you?", text: "How are you?" },
+  { label: "📅 Meet up soon?", text: "Meet up soon?" },
+];
 
 const NoChatHistoryPlaceholder = ({ name }) => {
+  const sendMessage = useChatStore((state) => state.sendMessage);
+
   return (
     <div className="flex flex-col items-center justify-center h-full text-center p-6">
       <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-5">
@@ -13,15 +22,16 @@ const NoChatHistoryPlaceholder = ({ name }) => {
         This is the beginning of your conversation. Send a message to start chatting!
       </p>
       <div className="flex flex-wrap gap-2 justify-center mt-5">
-        <button className="px-4 py-2 text-xs font-medium text-primary bg-primary/10 rounded-full hover:bg-primary/20 transition-colors">
-          👋 Say Hello
-        </button>
-        <button className="px-4 py-2 text-xs font-medium text-primary bg-primary/10 rounded-full hover:bg-primary/20 transition-colors">
-          🤝 How are you?
-        </button>
-        <button className="px-4 py-2 text-xs font-medium text-primary bg-primary/10 rounded-full hover:bg-primary/20 transition-colors">
-          📅 Meet up soon?
-        </button>
+        {QUICK_REPLIES.map((reply) => (
+          <button
+            key={reply.label}
+            type="button"
+            onClick={() => sendMessage({ text: reply.text })}
+            className="px-4 py-2 text-xs font-medium text-primary bg-primary/10 rounded-full hover:bg-primary/20 transition-colors"
+          >
+            {reply.label}
+          </button>
+        ))}
       </div>
     </div>
   );

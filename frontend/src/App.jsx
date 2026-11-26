@@ -1,8 +1,8 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router";
 import LandingPage from "./pages/LandingPage";
 import { useAuthStore } from "./store/useAuthStore";
-import { useEffect } from "react";
+import { useTheme } from "./hooks/useTheme";
 import PageLoader from "./components/PageLoader";
 import { Toaster } from "react-hot-toast";
 
@@ -13,24 +13,23 @@ const SignUpPage = lazy(() => import("./pages/SignUpPage"));
 function App() {
   const { checkAuth, isCheckingAuth, authUser } = useAuthStore();
   const location = useLocation();
-
-  // Apply saved theme globally on load
-  useEffect(() => {
-    const saved = localStorage.getItem("theme") || "dark";
-    document.documentElement.setAttribute("data-theme", saved);
-  }, []);
+  useTheme();
 
   useEffect(() => {
     checkAuth();
   }, [checkAuth]);
 
-  // Only show the full page loader if we're checking auth AND we are not on the landing page
   if (isCheckingAuth && location.pathname !== "/") return <PageLoader />;
 
+  const isChatRoute = location.pathname === "/chat";
+
   return (
-    <div className="min-h-screen w-full bg-base-100 text-base-content relative flex flex-col overflow-hidden">
-      {/* DECORATORS - GLOW SHAPES - Only render if not on the Terra-themed Landing Page to avoid background bleeding */}
-      {window.location.pathname !== "/" && (
+    <div
+      className={`w-full bg-base-100 text-base-content relative flex flex-col ${
+        isChatRoute ? "h-[100dvh] overflow-hidden" : "min-h-[100dvh] overflow-x-hidden"
+      }`}
+    >
+      {location.pathname !== "/" && (
         <>
           <div className="absolute top-0 -left-4 size-96 bg-pink-500 opacity-20 blur-[100px] pointer-events-none" />
           <div className="absolute bottom-0 -right-4 size-96 bg-cyan-500 opacity-20 blur-[100px] pointer-events-none" />
@@ -42,7 +41,7 @@ function App() {
           path="/chat"
           element={
             <Suspense fallback={<PageLoader />}>
-              {authUser ? <ChatPage /> : <Navigate to="/login" />}
+              {authUser ? <ChatPage /> : <Navigate to="/login" replace />}
             </Suspense>
           }
         />
@@ -50,7 +49,7 @@ function App() {
           path="/login"
           element={
             <Suspense fallback={<PageLoader />}>
-              {!authUser ? <LoginPage /> : <Navigate to="/chat" />}
+              {!authUser ? <LoginPage /> : <Navigate to="/chat" replace />}
             </Suspense>
           }
         />
@@ -58,10 +57,11 @@ function App() {
           path="/signup"
           element={
             <Suspense fallback={<PageLoader />}>
-              {!authUser ? <SignUpPage /> : <Navigate to="/chat" />}
+              {!authUser ? <SignUpPage /> : <Navigate to="/chat" replace />}
             </Suspense>
           }
         />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <Toaster />
     </div>

@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import useKeyboardSound from "../hooks/useKeyboardSound";
 import { useChatStore } from "../store/useChatStore";
+import { readImageFileAsDataUrl } from "../lib/imageUpload";
 import toast from "react-hot-toast";
 import { ImageIcon, SendIcon, XIcon } from "lucide-react";
 
@@ -23,20 +24,21 @@ function MessageInput() {
       image: imagePreview,
     });
     setText("");
-    setImagePreview("");
+    setImagePreview(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const handleImageChange = (e) => {
-    const file = e.target.files[0];
-    if (!file.type.startsWith("image/")) {
-      toast.error("Please select an image file");
-      return;
-    }
+  const handleImageChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-    const reader = new FileReader();
-    reader.onloadend = () => setImagePreview(reader.result);
-    reader.readAsDataURL(file);
+    try {
+      const dataUrl = await readImageFileAsDataUrl(file);
+      setImagePreview(dataUrl);
+    } catch (error) {
+      toast.error(error.message);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   };
 
   const removeImage = () => {
@@ -45,7 +47,7 @@ function MessageInput() {
   };
 
   return (
-    <div className="p-4 border-t border-base-content/10 bg-base-200">
+    <div className="shrink-0 p-4 border-t border-base-content/10 bg-base-200">
       {imagePreview && (
         <div className="max-w-3xl mx-auto mb-3 flex items-center">
           <div className="relative">
@@ -58,6 +60,7 @@ function MessageInput() {
               onClick={removeImage}
               className="absolute -top-2 -right-2 btn btn-xs btn-circle btn-neutral"
               type="button"
+              aria-label="Remove image"
             >
               <XIcon className="w-3 h-3" />
             </button>
@@ -71,15 +74,16 @@ function MessageInput() {
           value={text}
           onChange={(e) => {
             setText(e.target.value);
-            isSoundEnabled && playRandomKeyStrokeSound();
+            if (isSoundEnabled) playRandomKeyStrokeSound();
           }}
           className="flex-1 bg-base-300/50 border border-base-content/20 text-base-content placeholder-base-content/40 rounded-lg py-2 px-3 md:px-4 focus:outline-none focus:border-cyan-500"
           placeholder="Type your message..."
+          aria-label="Type your message"
         />
 
         <input
           type="file"
-          accept="image/*"
+          accept="image/png,image/jpeg,image/webp,image/gif"
           ref={fileInputRef}
           onChange={handleImageChange}
           className="hidden"
@@ -88,6 +92,7 @@ function MessageInput() {
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
+          aria-label="Attach image"
           className={`bg-base-300/50 border border-base-content/20 text-base-content/60 hover:text-base-content rounded-lg px-3 md:px-4 transition-colors ${
             imagePreview ? "text-cyan-500" : ""
           }`}
@@ -97,6 +102,7 @@ function MessageInput() {
         <button
           type="submit"
           disabled={!text.trim() && !imagePreview}
+          aria-label="Send message"
           className="bg-gradient-to-r from-cyan-500 to-cyan-600 text-white rounded-lg px-3 md:px-4 py-2 font-medium hover:from-cyan-600 hover:to-cyan-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <SendIcon className="w-5 h-5" />

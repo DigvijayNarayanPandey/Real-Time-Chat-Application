@@ -1,8 +1,10 @@
 import { Server } from "socket.io";
 import http from "http";
 import express from "express";
+import mongoose from "mongoose";
 import { allowedOrigins } from "./cors.js";
 import { socketAuthMiddleware } from "../middleware/socket.auth.middleware.js";
+import { logger } from "./logger.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -14,40 +16,62 @@ const io = new Server(server, {
   },
 });
 
-// apply authentication middleware to all socket connections
 io.use(socketAuthMiddleware);
 
-// we will use this function to check if the user is online or not
-export function getReceiverSocketId(userId) {
-  return userSocketMap[userId];
+// Track all active socket IDs per user so multi-device/multi-tab sessions stay synced
+const userSocketMap = new Map(); // Map<string, Set<string>>
+
+export function getReceiverSocketIds(userId) {
+  const sockets = userSocketMap.get(String(userId));
+  return sockets ? Array.from(sockets) : [];
 }
 
-// this is for storig online users
-const userSocketMap = {}; // {userId:socketId}
+export function getReceiverSocketId(userId) {
+  const socketIds = getReceiverSocketIds(userId);
+  return socketIds.length > 0 ? socketIds[socketIds.length - 1] : undefined;
+}
+
+export function emitToUser(userId, event, payload) {
+  const socketIds = getReceiverSocketIds(userId);
+  for (const socketId of socketIds) {
+    io.to(socketId).emit(event, payload);
+  }
+}
 
 io.on("connection", (socket) => {
-  console.log("A user connected", socket.user.fullName);
-
   const userId = socket.userId;
-  userSocketMap[userId] = socket.id;
+  logger.info("Socket connected", { userId, socketId: socket.id });
 
-  // io.emit() is used to send events to all connected clients
-  io.emit("getOnlineUsers", Object.keys(userSocketMap));
+  if (!userSocketMap.has(userId)) {
+    userSocketMap.set(userId, new Set());
+  }
+  userSocketMap.get(userId).add(socket.id);
 
-  // with socket.on we listen for events from clients
+  io.emit("getOnlineUsers", Array.from(userSocketMap.keys()));
+
   socket.on("disconnect", () => {
-    console.log("A user disconnected", socket.user.fullName);
-    delete userSocketMap[userId];
-    io.emit("getOnlineUsers", Object.keys(userSocketMap));
+    logger.info("Socket disconnected", { userId, socketId: socket.id });
+    const sockets = userSocketMap.get(userId);
+    if (sockets) {
+      sockets.delete(socket.id);
+      if (sockets.size === 0) {
+        userSocketMap.delete(userId);
+      }
+    }
+    io.emit("getOnlineUsers", Array.from(userSocketMap.keys()));
   });
 
-  // Listen for read receipts
-  socket.on("messagesRead", ({ readerId, chatUserId }) => {
-    // Emit to the sender (chatUserId) that the reader (readerId) has read messages
-    const senderSocketId = getReceiverSocketId(chatUserId);
-    if (senderSocketId) {
-      io.to(senderSocketId).emit("messagesRead", { readerId, chatUserId });
+  // Always enforce the authenticated socket.userId as readerId to prevent spoofing
+  socket.on("messagesRead", (payload) => {
+    const chatUserId = payload?.chatUserId;
+    if (!chatUserId || !mongoose.Types.ObjectId.isValid(chatUserId)) {
+      return;
     }
+
+    emitToUser(chatUserId, "messagesRead", {
+      readerId: userId,
+      chatUserId: String(chatUserId),
+    });
   });
 });
 
